@@ -2,7 +2,7 @@
  * Operates motion-sensor driven beetle
  * Beetle turns it head and clicks its mandibles at those walking by
  * Beetle is a product of the Backstage Beetles (Otto, Ruisha, Wes, Nik, John)
- * Last Updated 10 April 2025
+ * Last Updated 17 April 2025
  *
  * NOTICE:
  * The head-turning mechanism and eye LEDs are things we plan to implement later on as we continue to develop the beetle.
@@ -24,8 +24,8 @@
 #define left 40 // Head turn angle to look left
 #define center 90 // Head turn angle to look straight
 #define right 140 // Head turn angle to look right
-#define open 55 // Mandibles max open angle
-#define close 120 // Mandibles min open angle
+#define open 82 // Mandibles max open angle
+#define close 127 // Mandibles min open angle
 
 
 // Object Declarations:
@@ -36,13 +36,13 @@ Servo mandibles;
 int eyesBrightness = 255; // 0 to 255, brightness of eye LEDs
 int setEyesBrightness = 0; // The brightness we want the eyes LEDs to be at (will transition to this brightness slowly)
 double headAngle = center; // The initial head angle
-double mandiblesAngle = open; // The initial mandible state
 double turnSpeed = 1; // Degrees per ten milliseconds (step size for turning the head)
-double mandibleOpenSpeed = 2; // Degrees per ten milliseconds (step size for opening mandibles)
-double mandibleCloseSpeed = 4; // Degrees per ten milliseconds (step size for closing mandibles)
+unsigned long mandiblesTime = 157; // Milliseconds for the mandibles to open or close
+unsigned long mandiblesAngle = open; // The angle we want the mandibles  motor to be at
+unsigned long lastM = 0; // Time of last mandibles direction change (in milliseconds from boot)
 bool mandiblesDone; // Mandibles reached the set position
-int motionDuration = 2000; // Milliseconds (any motion detected must be registered for at least this much time)
-unsigned long lastMotion = 0;
+unsigned long motionDuration = 2000; // Milliseconds (any motion detected must be registered for at least this much time)
+unsigned long lastMotion = 0; // Time of last detected motion (in millisoeconds from boot)
 int lastMotionType;
 
 // Motion Function:
@@ -51,31 +51,33 @@ int lastMotionType;
 #define RIGHT 2
 #define BOTH 3
 bool motionL() { // Return true if motion dectected in left eye
-  return (analogRead(leftEye) > 700);
+  return (analogRead(leftEye) > 200);
 }
 bool motionR() { // Return true if motion dectected in right eye
-  return (analogRead(rightEye) > 700);
+  return (analogRead(rightEye) > 200);
 }
 int motion() { // Return summary of motion (can be NONE, LEFT, RIGHT, or BOTH)
-  if (millis() - lastMotion > motionDuration) { // If exceeded time limit since last motion received
+  if (millis() >= lastMotion + motionDuration) { // If exceeded time limit since last motion received
     bool l = motionL();
     bool r = motionR();
-    if (random(0, 2*analogRead(potentiometerPin)) == 0 || analogRead(potentiometerPin) < 100) { // Let potentiometer adjust frequency of scare
+    if (random(0, 2*analogRead(potentiometerPin)) == 0 || analogRead(potentiometerPin) < 200) { // Let potentiometer adjust frequency of scare
       motionDuration = random(500, 5000);
-      if (l) {
+      mandiblesTime = random(140, 257);
+      if (l == true) {
         lastMotion = millis();
-        if (r) {
+        if (r == true) {
           lastMotionType = BOTH;
           return BOTH;
         } else {
           lastMotionType = LEFT;
           return LEFT;
         }
-      } else if (r) {
+      } else if (r == true) {
         lastMotion = millis();
         lastMotionType = RIGHT;
         return RIGHT;
       } else {
+        lastMotion = 0;
         return NONE;
       }
     } else {
@@ -111,17 +113,8 @@ void loop() { // The actual code that does the things we want forever:
   analogWrite(eyesLED, eyesBrightness);
 
   // Manage Mandibles:
-  if (abs(mandiblesAngle - mandibles.read()) > mandibleCloseSpeed) { // If the mandibles aren't where we have set them to be
-    mandiblesDone = false; // Note that we are not at the desired position
-    // Go towards the desired postition:
-    if (mandiblesAngle > mandibles.read()) {
-      mandibles.write(mandibles.read() + mandibleCloseSpeed);
-    } else if (mandiblesAngle < mandibles.read()) {
-      mandibles.write(mandibles.read() - mandibleOpenSpeed);
-    }
-  } else {
-    mandiblesDone = true;
-  }
+  mandibles.write(mandiblesAngle);
+  mandiblesDone = (millis() >= lastM + mandiblesTime);
 
   // Manage Head:
   if (abs(headAngle - headTurn.read()) > turnSpeed) { // If the head isn't where we have set it to be
@@ -144,6 +137,7 @@ void loop() { // The actual code that does the things we want forever:
     // Act according to motion detected:
     setEyesBrightness = 255;
     if (mandiblesDone) { // If the mandibles reached the set position, swap the position to the other position:
+      lastM = millis();
       if (mandiblesAngle == open) {
         mandiblesAngle = close;
       } else {
